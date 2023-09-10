@@ -25,9 +25,6 @@
                 <geometry>    
                     <cylinder length="0.3" radius="0.25"/>
                 </geometry>
-                <material name="Yellow">
-                    <color rgba="1 1 0 1" />
-                </material>
             </visual>
         </link>
 
@@ -209,5 +206,9 @@
         <gazebo reference="link_back_caster">
             <mu1>0</mu1>
             <mu2>0</mu2>
+        </gazebo>
+
+        <gazebo reference="base_link">
+            <material>Gazebo/Black</material>
         </gazebo>
 </robot>
