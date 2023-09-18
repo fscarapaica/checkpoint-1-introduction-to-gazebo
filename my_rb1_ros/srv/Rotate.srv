@@ -1,0 +1,4 @@
+
+int32 degrees    # A *request* that contains an integer field, named `degrees`, to specify the number of degrees to rotate
+---
+string result     # A *response* that contains an string, named `result`, that specifies if the rotation has been completed successfully or not.
