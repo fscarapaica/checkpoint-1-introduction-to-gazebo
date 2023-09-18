@@ -6,7 +6,8 @@
 #include "tf/tf.h"
 
 const double PI = 3.141592653589793238463;
-int degree = 0;
+int degree = INT_MAX;
+int target = 0;
 
 void odom_sub_callback(const nav_msgs::Odometry::ConstPtr &odomMsg) {
   tf::Quaternion q(
@@ -18,9 +19,27 @@ void odom_sub_callback(const nav_msgs::Odometry::ConstPtr &odomMsg) {
   degree = std::round((yaw * 180.0) / PI);
 }
 
+void normalizeDegrees() {
+  if (target > 360) {
+    target -= 360;
+    normalizeDegrees();
+  } else if (target > 180) {
+    target = target - 360;
+  }
+}
+
+void calculateTargetRotation() {
+  int targetPN = -1;
+  if (target >= 0)
+    targetPN = 1;
+  target = abs(target);
+  normalizeDegrees();
+  target *= targetPN;
+}
+
 bool service_callback(my_rb1_ros::Rotate::Request &req,
                       my_rb1_ros::Rotate::Response &res) {
-  ROS_INFO("Service called: ROTATE:%d", req.degrees);
+  ROS_INFO("Service called /rotate_robot: ROTATE: %d degrees", req.degrees);
 
   /* set_up */
   ros::NodeHandle nh;
@@ -29,7 +48,16 @@ bool service_callback(my_rb1_ros::Rotate::Request &req,
   ros::Subscriber sub = nh.subscribe("odom", 100, odom_sub_callback);
 
   // loads odom callback
-  ros::spinOnce();
+  // makes sure degree has relevant information
+  degree = INT_MAX;
+  while (degree == INT_MAX) {
+    ros::spinOnce();
+  }
+
+  // calculate target
+  target = req.degrees + degree;
+  calculateTargetRotation();
+
   // Rotation velocity
   float rotation_vel = 0.1;
 
@@ -42,8 +70,7 @@ bool service_callback(my_rb1_ros::Rotate::Request &req,
   }
 
   ros::Rate loop_rate(10);
-  while (ros::ok() && degree != req.degrees) {
-    ROS_INFO("Rotating: %d", degree);
+  while (ros::ok() && degree != target) {
     pub_cmd_vel.publish(rotate);
     ros::spinOnce();
     loop_rate.sleep();
@@ -62,14 +89,15 @@ bool service_callback(my_rb1_ros::Rotate::Request &req,
   /* tear_down */
   sub.shutdown();
   pub_cmd_vel.shutdown();
-  res.result = "successful";
+  res.result = "/rotate_robot service successful";
+  ROS_INFO("Service called finished:");
   return true;
 }
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "service_server");
   ros::NodeHandle nh;
-
+  ROS_INFO("Service /rotate_robot created");
   ros::ServiceServer my_service =
       nh.advertiseService("/rotate_robot", service_callback);
   ros::spin();
