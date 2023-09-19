@@ -7,6 +7,7 @@
 
 const double PI = 3.141592653589793238463;
 int degree = INT_MAX;
+int slowdownTarget = 0;
 int target = 0;
 
 void odom_sub_callback(const nav_msgs::Odometry::ConstPtr &odomMsg) {
@@ -19,27 +20,27 @@ void odom_sub_callback(const nav_msgs::Odometry::ConstPtr &odomMsg) {
   degree = std::round((yaw * 180.0) / PI);
 }
 
-void normalizeDegrees() {
-  if (target > 360) {
-    target -= 360;
-    normalizeDegrees();
-  } else if (target > 180) {
-    target = target - 360;
+void normalizeDegrees(int &targetDegree) {
+  if (targetDegree > 360) {
+    targetDegree -= 360;
+    normalizeDegrees(targetDegree);
+  } else if (targetDegree > 180) {
+    targetDegree = targetDegree - 360;
   }
 }
 
-void calculateTargetRotation() {
+void calculateTargetRotation(int &targetDegree) {
   int targetPN = -1;
-  if (target >= 0)
+  if (targetDegree >= 0)
     targetPN = 1;
-  target = abs(target);
-  normalizeDegrees();
-  target *= targetPN;
+  targetDegree = abs(targetDegree);
+  normalizeDegrees(targetDegree);
+  targetDegree *= targetPN;
 }
 
 bool service_callback(my_rb1_ros::Rotate::Request &req,
                       my_rb1_ros::Rotate::Response &res) {
-  ROS_INFO("Service called /rotate_robot: ROTATE: %d degrees", req.degrees);
+  ROS_INFO("Service Called: Rotate %d Degrees", req.degrees);
 
   /* set_up */
   ros::NodeHandle nh;
@@ -56,21 +57,31 @@ bool service_callback(my_rb1_ros::Rotate::Request &req,
 
   // calculate target
   target = req.degrees + degree;
-  calculateTargetRotation();
-
-  // Rotation velocity
-  float rotation_vel = 0.1;
+  slowdownTarget = target;
+  calculateTargetRotation(target);
 
   /* service implementation */
-  geometry_msgs::Twist rotate;
-  if (req.degrees >= 0) {
-    rotate.angular.z = rotation_vel;
-  } else {
-    rotate.angular.z = rotation_vel * -1;
-  }
 
-  ros::Rate loop_rate(10);
-  while (ros::ok() && degree != target) {
+  // Rotation velocity
+  geometry_msgs::Twist rotate;
+  rotate.angular.z = 0.4;
+  // Check if we need to go opposite direction
+  int pn = 1;
+  if (req.degrees < 0) {
+    pn = -1;
+    rotate.angular.z *= pn;
+    slowdownTarget += 5;
+  } else {
+    slowdownTarget -= 5;
+  }
+  calculateTargetRotation(slowdownTarget);
+
+  ros::Rate loop_rate(50);
+  while (ros::ok()) {
+    if (target == degree)
+      break;
+    if (slowdownTarget == degree)
+      rotate.angular.z = 0.04 * pn;
     pub_cmd_vel.publish(rotate);
     ros::spinOnce();
     loop_rate.sleep();
@@ -90,14 +101,14 @@ bool service_callback(my_rb1_ros::Rotate::Request &req,
   sub.shutdown();
   pub_cmd_vel.shutdown();
   res.result = "/rotate_robot service successful";
-  ROS_INFO("Service called finished:");
+  ROS_INFO("Service called complete");
   return true;
 }
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "service_server");
   ros::NodeHandle nh;
-  ROS_INFO("Service /rotate_robot created");
+  ROS_INFO("Service Ready: /rotate_robot");
   ros::ServiceServer my_service =
       nh.advertiseService("/rotate_robot", service_callback);
   ros::spin();
